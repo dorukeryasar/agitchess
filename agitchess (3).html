@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgitChess | Premium Chess Platform</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        dark: '#0f0f13',
+                        surface: '#1a1a24',
+                        surfaceLight: '#262635',
+                        accent: '#fbbf24', /* Amber 400 */
+                        accentHover: '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Chessboard.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        body { background-color: theme('colors.dark'); color: #e5e5e5; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: theme('colors.dark'); }
+        ::-webkit-scrollbar-thumb { background: theme('colors.surfaceLight'); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: theme('colors.accent'); }
+        
+        #board-container {
+            width: 100%; max-width: 500px; margin: 0 auto;
+            border-radius: 8px; overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid theme('colors.surfaceLight');
+        }
+
+        .nav-link { transition: all 0.2s; }
+        .nav-link.active { color: theme('colors.accent'); border-bottom: 2px solid theme('colors.accent'); }
+
+        #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast {
+            background: theme('colors.surfaceLight'); border-left: 4px solid theme('colors.accent');
+            padding: 12px 20px; border-radius: 4px; box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            animation: slideIn 0.3s ease-out forwards; display: flex; align-items: center; gap: 10px; pointer-events: auto;
+        }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Loading overlay */
+        #global-loader {
+            position: fixed; inset: 0; background: rgba(15, 15, 19, 0.9); z-index: 10000;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans">
+
+    <!-- Global Loader -->
+    <div id="global-loader" class="hidden">
+        <i class="ph ph-spinner-gap animate-spin text-5xl text-accent mb-4"></i>
+        <p class="text-gray-300 animate-pulse">Yükleniyor...</p>
+    </div>
+
+    <!-- ================= VIEW: AUTH ================= -->
+    <div id="auth-view" class="hidden min-h-screen flex items-center justify-center p-4">
+        <div class="bg-surface p-8 rounded-xl shadow-2xl border border-gray-800 w-full max-w-md relative overflow-hidden">
+            <!-- Decorative Accent -->
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-accent to-orange-500"></div>
+
+            <div class="text-center mb-6 mt-2">
+                <i class="ph-fill ph-strategy text-5xl text-accent mb-2 drop-shadow-[0_0_15px_rgba(251,191,36,0.3)]"></i>
+                <h1 class="text-3xl font-bold text-white tracking-tight">Agit<span class="text-accent">Chess</span></h1>
+                <p class="text-sm text-gray-400 mt-1" id="auth-subtitle">Hesabınıza giriş yapın</p>
+            </div>
+            
+            <form id="auth-form" class="space-y-4" onsubmit="handleAuth(event)">
+                <div id="signup-fields" class="hidden space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">Ad Soyad</label>
+                        <input type="text" id="auth-name" class="w-full bg-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-accent outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">Kullanıcı Adı</label>
+                        <input type="text" id="auth-username" class="w-full bg-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-accent outline-none transition">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">E-posta</label>
+                    <input type="email" id="auth-email" required class="w-full bg-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-accent outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Şifre</label>
+                    <input type="password" id="auth-password" required minlength="6" class="w-full bg-dark border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-accent outline-none transition">
+                </div>
+                
+                <button type="submit" id="auth-submit-btn" class="w-full bg-accent hover:bg-accentHover text-black font-bold py-3 rounded-lg transition shadow-[0_4px_14px_0_rgba(251,191,36,0.39)] mt-6">
+                    Giriş Yap
+                </button>
+            </form>
+
+            <div class="mt-6 text-center">
+                <button onclick="toggleAuthMode()" class="text-sm text-gray-400 hover:text-white transition">
+                    <span id="auth-toggle-text">Hesabın yok mu? <span class="text-accent underline">Kayıt Ol</span></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= VIEW: MAIN APP ================= -->
+    <div id="app-view" class="hidden flex-col min-h-screen">
+        
+        <!-- Navbar -->
+        <nav class="bg-surface/95 backdrop-blur-md sticky top-0 z-50 border-b border-gray-800 shadow-lg">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center gap-2">
+                        <i class="ph-fill ph-strategy text-3xl text-accent"></i>
+                        <span class="font-bold text-xl text-white hidden sm:block">Agit<span class="text-accent">Chess</span></span>
+                    </div>
+                    
+                    <div class="flex space-x-1 sm:space-x-4">
+                        <button onclick="switchTab('play')" id="nav-play" class="nav-link active px-3 py-4 text-sm font-medium flex items-center gap-2">
+                            <i class="ph ph-sword text-lg"></i> <span class="hidden md:inline">Oyna</span>
+                        </button>
+                        <button onclick="switchTab('tournaments')" id="nav-tournaments" class="nav-link px-3 py-4 text-sm font-medium flex items-center gap-2">
+                            <i class="ph ph-trophy text-lg"></i> <span class="hidden md:inline">Turnuvalar</span>
+                        </button>
+                        <button onclick="switchTab('friends')" id="nav-friends" class="nav-link px-3 py-4 text-sm font-medium flex items-center gap-2">
+                            <i class="ph ph-users text-lg"></i> <span class="hidden md:inline">Arkadaşlar</span>
+                        </button>
+                        <button onclick="switchTab('profile')" id="nav-profile" class="nav-link px-3 py-4 text-sm font-medium flex items-center gap-2">
+                            <i class="ph ph-user-circle text-lg"></i> <span class="hidden md:inline">Profil</span>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <div class="text-right hidden lg:block">
+                            <div class="text-sm font-bold text-white" id="user-display-name">Kullanıcı</div>
+                            <div class="text-xs text-accent" id="user-role-badge">Oyuncu</div>
+                        </div>
+                        <button onclick="logout()" class="text-gray-400 hover:text-red-500 transition p-2 rounded-lg hover:bg-gray-800" title="Çıkış Yap">
+                            <i class="ph ph-sign-out text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-grow max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+            
+            <!-- TAB: PLAY -->
+            <section id="tab-play" class="block fade-in">
+                <div class="flex flex-col lg:flex-row gap-8 items-start justify-center">
+                    <div class="w-full lg:w-3/5">
+                        <div id="board-container">
+                            <div id="board"></div>
+                        </div>
+                    </div>
+                    <div class="w-full lg:w-2/5 bg-surface rounded-2xl p-6 md:p-8 border border-gray-800 shadow-2xl relative overflow-hidden">
+                        <div class="absolute -right-10 -top-10 w-32 h-32 bg-accent opacity-10 rounded-full blur-3xl"></div>
+                        
+                        <h2 class="text-2xl font-bold mb-2 flex items-center gap-3 text-white">
+                            <div class="p-2 bg-dark rounded-lg border border-gray-700 text-accent"><i class="ph-fill ph-sword"></i></div>
+                            Kendinle Oyna
+                        </h2>
+                        <p class="text-sm text-gray-400 mb-8">Hem beyaz hem de siyah taşları hareket ettirerek yerel olarak (hotseat) oynayın. Taktik çalışmak için idealdir.</p>
+                        
+                        <div class="p-5 bg-dark rounded-xl mb-8 border border-gray-700 relative">
+                            <h3 class="text-xs uppercase tracking-widest text-gray-500 font-bold mb-2">Oyun Durumu</h3>
+                            <div id="game-status" class="text-xl font-medium text-accent">Beyaz hamle sırası</div>
+                        </div>
+
+                        <button onclick="resetGame()" class="w-full bg-surfaceLight hover:bg-gray-700 text-white font-semibold py-4 px-4 rounded-xl border border-gray-600 transition flex justify-center items-center gap-2 group">
+                            <i class="ph ph-arrows-clockwise text-xl group-hover:rotate-180 transition duration-500"></i> Oyunu Sıfırla
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: TOURNAMENTS -->
+            <section id="tab-tournaments" class="hidden fade-in">
+                <div class="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <i class="ph-fill ph-trophy text-accent"></i> Turnuvalar
+                    </h2>
+                    <button onclick="fetchTournaments()" class="flex items-center gap-2 text-sm bg-dark border border-gray-700 px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:border-gray-500 transition">
+                        <i class="ph ph-arrows-clockwise"></i> Yenile
+                    </button>
+                </div>
+
+                <!-- Admin Create Section -->
+                <div id="admin-tournament-panel" class="hidden bg-gradient-to-r from-surfaceLight to-surface border border-accent/30 p-6 rounded-2xl mb-8 shadow-lg">
+                    <h3 class="font-bold text-white mb-4 flex items-center gap-2">
+                        <i class="ph-fill ph-crown text-accent text-xl"></i> Yeni Turnuva Oluştur (Admin Paneli)
+                    </h3>
+                    <div class="flex flex-col md:flex-row gap-4">
+                        <input type="text" id="tour-title" placeholder="Turnuva Adı (örn: İlkbahar Kupası)" class="flex-1 bg-dark border border-gray-600 rounded-lg px-4 py-3 text-white outline-none focus:border-accent transition">
+                        <select id="tour-time" class="bg-dark border border-gray-600 rounded-lg px-4 py-3 text-white outline-none focus:border-accent transition w-full md:w-auto">
+                            <option value="1+0">1+0 Bullet</option>
+                            <option value="3+0">3+0 Blitz</option>
+                            <option value="5+0">5+0 Blitz</option>
+                            <option value="10+0">10+0 Rapid</option>
+                            <option value="30+0">30+0 Classical</option>
+                        </select>
+                        <button onclick="createTournament()" class="bg-accent hover:bg-accentHover text-black font-bold px-8 py-3 rounded-lg transition whitespace-nowrap">
+                            Oluştur
+                        </button>
+                    </div>
+                </div>
+
+                <div id="tournaments-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Loaded via JS -->
+                </div>
+            </section>
+
+            <!-- TAB: FRIENDS -->
+            <section id="tab-friends" class="hidden fade-in">
+                <div class="border-b border-gray-800 pb-4 mb-8">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <i class="ph-fill ph-users text-accent"></i> Arkadaşlar
+                    </h2>
+                </div>
+                
+                <div class="bg-surface p-6 rounded-2xl border border-gray-800 mb-10 shadow-lg">
+                    <h3 class="text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">Kullanıcı Ara & Ekle</h3>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <div class="relative flex-1">
+                            <i class="ph ph-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+                            <input type="text" id="friend-search-input" placeholder="Kullanıcı adını tam olarak yazın..." class="w-full bg-dark border border-gray-600 rounded-xl pl-12 pr-4 py-3 text-white outline-none focus:border-accent transition">
+                        </div>
+                        <button onclick="searchAndAddFriend()" class="bg-surfaceLight border border-gray-600 hover:border-accent hover:text-accent text-white px-8 py-3 rounded-xl transition font-medium">
+                            Ekle
+                        </button>
+                    </div>
+                </div>
+
+                <h3 class="text-sm font-bold text-gray-400 mb-4 uppercase tracking-wider">Arkadaş Listeniz</h3>
+                <div id="friends-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                    <!-- Loaded via JS -->
+                </div>
+            </section>
+
+            <!-- TAB: PROFILE -->
+            <section id="tab-profile" class="hidden fade-in">
+                <div class="border-b border-gray-800 pb-4 mb-8">
+                    <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+                        <i class="ph-fill ph-user-circle text-accent"></i> Profil
+                    </h2>
+                </div>
+
+                <div class="bg-surface border border-gray-800 rounded-2xl p-8 max-w-2xl mx-auto shadow-xl relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-64 h-64 bg-accent opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                    
+                    <div class="flex flex-col sm:flex-row items-center gap-8 relative z-10">
+                        <div class="w-32 h-32 rounded-full bg-dark border-4 border-surfaceLight flex items-center justify-center text-5xl font-bold text-accent shadow-inner" id="profile-avatar">
+                            ?
+                        </div>
+                        <div class="text-center sm:text-left flex-1">
+                            <h3 class="text-3xl font-bold text-white mb-1" id="profile-name">Yükleniyor...</h3>
+                            <p class="text-accent text-lg mb-4" id="profile-username">@kullaniciadi</p>
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                                <div class="bg-dark p-4 rounded-xl border border-gray-700">
+                                    <span class="text-gray-500 text-xs uppercase font-bold block mb-1">E-posta</span>
+                                    <span class="text-white text-sm break-all" id="profile-email">-</span>
+                                </div>
+                                <div class="bg-dark p-4 rounded-xl border border-gray-700">
+                                    <span class="text-gray-500 text-xs uppercase font-bold block mb-1">Hesap Rolü</span>
+                                    <span class="text-white text-sm" id="profile-role">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <!-- Standard Scripts for Chess -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+
+    <!-- Supabase Logic (Module) -->
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+        // Hardcoded Supabase Credentials
+        const supabaseUrl = 'https://sbzkehwgcaomagvzhvoq.supabase.co';
+        const supabaseKey = 'sb_publishable_EPkyydgse1ZgFc-Be8lTkw_uDg40UMb';
+        
+        let supabase = null;
+        let currentUser = null;
+        let userProfile = null;
+        let isSignupMode = false;
+
+        // UI Helpers
+        window.showToast = (msg, type = 'success') => {
+            const toast = document.createElement('div');
+            toast.className = `toast border-l-4 ${type === 'success' ? 'border-green-500' : 'border-red-500'}`;
+            toast.innerHTML = `<i class="ph-fill ${type === 'success' ? 'ph-check-circle text-green-500' : 'ph-warning-circle text-red-500'} text-xl"></i> <span class="text-white text-sm font-medium">${msg}</span>`;
+            document.getElementById('toast-container').appendChild(toast);
+            
+            setTimeout(() => { 
+                toast.style.animation = 'fadeOut 0.3s ease-out forwards'; 
+                setTimeout(() => toast.remove(), 300); 
+            }, 3000);
+        };
+        
+        window.showLoader = (show) => document.getElementById('global-loader').style.display = show ? 'flex' : 'none';
+        
+        const showView = (id) => {
+            ['auth-view', 'app-view'].forEach(v => document.getElementById(v).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        };
+
+        // ================= APP INITIALIZATION =================
+        window.initApp = async () => {
+            supabase = createClient(supabaseUrl, supabaseKey);
+            await checkSession();
+        };
+
+        // ================= AUTHENTICATION =================
+        const checkSession = async () => {
+            showLoader(true);
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) throw error;
+                if (session) {
+                    currentUser = session.user;
+                    await fetchProfile();
+                    showView('app-view');
+                    initChessApp();
+                    // Load default tab content
+                    fetchTournaments();
+                } else {
+                    showView('auth-view');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Oturum kontrolünde hata oluştu.", "error");
+                showView('auth-view');
+            }
+            showLoader(false);
+        };
+
+        const fetchProfile = async () => {
+            const { data, error } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+            if (error) { 
+                console.error("Profile fetch error:", error); 
+                return; 
+            }
+            userProfile = data;
+            
+            // Navbar Updates
+            document.getElementById('user-display-name').textContent = data.username || data.name;
+            const badge = document.getElementById('user-role-badge');
+            
+            // Profile Tab Updates
+            document.getElementById('profile-name').textContent = data.name;
+            document.getElementById('profile-username').textContent = '@' + data.username;
+            document.getElementById('profile-email').textContent = data.email;
+            document.getElementById('profile-avatar').textContent = (data.username || '?').charAt(0).toUpperCase();
+            
+            const profileRoleText = document.getElementById('profile-role');
+
+            if(data.role === 'admin') {
+                badge.textContent = '👑 Yönetici';
+                badge.classList.add('text-amber-500');
+                profileRoleText.innerHTML = '<span class="text-amber-500 font-bold"><i class="ph-fill ph-crown"></i> Yönetici (Admin)</span>';
+                document.getElementById('admin-tournament-panel').classList.remove('hidden');
+            } else {
+                badge.textContent = 'Oyuncu';
+                badge.classList.add('text-gray-400');
+                profileRoleText.textContent = 'Standart Oyuncu';
+                document.getElementById('admin-tournament-panel').classList.add('hidden');
+            }
+        };
+
+        window.toggleAuthMode = () => {
+            isSignupMode = !isSignupMode;
+            document.getElementById('signup-fields').style.display = isSignupMode ? 'block' : 'none';
+            document.getElementById('auth-submit-btn').textContent = isSignupMode ? 'Hesap Oluştur' : 'Giriş Yap';
+            document.getElementById('auth-subtitle').textContent = isSignupMode ? 'Yeni hesap oluşturun' : 'Hesabınıza giriş yapın';
+            document.getElementById('auth-toggle-text').innerHTML = isSignupMode ? 'Zaten hesabın var mı? <span class="text-accent underline">Giriş Yap</span>' : 'Hesabın yok mu? <span class="text-accent underline">Kayıt Ol</span>';
+            // Required toggles
+            document.getElementById('auth-name').required = isSignupMode;
+            document.getElementById('auth-username').required = isSignupMode;
+        };
+
+        window.handleAuth = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+            showLoader(true);
+            
+            try {
+                if (isSignupMode) {
+                    const name = document.getElementById('auth-name').value;
+                    const username = document.getElementById('auth-username').value;
+                    
+                    // Auth Signup
+                    const { data: authData, error: authErr } = await supabase.auth.signUp({ email, password });
+                    if (authErr) throw authErr;
+                    
+                    // Determine if first user (Admin)
+                    const { count, error: countErr } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+                    const role = (count === 0) ? 'admin' : 'user';
+
+                    // Insert Profile
+                    if (authData.user) {
+                        const { error: profileErr } = await supabase.from('profiles').insert([
+                            { id: authData.user.id, email, name, username, role }
+                        ]);
+                        if (profileErr) throw profileErr;
+                    }
+                    
+                    showToast('Kayıt başarılı! Giriş yapabilirsiniz.', 'success');
+                    toggleAuthMode();
+                    
+                } else {
+                    // Login
+                    const { error } = await supabase.auth.signInWithPassword({ email, password });
+                    if (error) throw error;
+                    await checkSession();
+                    showToast('Başarıyla giriş yapıldı.', 'success');
+                }
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+            showLoader(false);
+        };
+
+        window.logout = async () => {
+            await supabase.auth.signOut();
+            currentUser = null;
+            userProfile = null;
+            showView('auth-view');
+            showToast('Çıkış yapıldı.', 'success');
+        };
+
+        // ================= TABS LOGIC =================
+        const tabs = ['play', 'tournaments', 'friends', 'profile'];
+        window.switchTab = (target) => {
+            tabs.forEach(t => {
+                const section = document.getElementById(`tab-${t}`);
+                const nav = document.getElementById(`nav-${t}`);
+                if(section && nav) {
+                    if(t === target){
+                        section.classList.remove('hidden');
+                        section.classList.add('block');
+                        nav.classList.add('active');
+                    } else {
+                        section.classList.add('hidden');
+                        section.classList.remove('block');
+                        nav.classList.remove('active');
+                    }
+                }
+            });
+
+            // Tab specific actions
+            if (target === 'play' && window.board) {
+                window.setTimeout(() => window.board.resize(), 100);
+            }
+            if (target === 'tournaments') fetchTournaments();
+            if (target === 'friends') loadFriends();
+        };
+
+        // ================= TOURNAMENTS LOGIC =================
+        window.fetchTournaments = async () => {
+            const list = document.getElementById('tournaments-list');
+            if(!list) return;
+            
+            list.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10"><i class="ph ph-spinner-gap animate-spin text-3xl mb-2"></i><br>Yükleniyor...</div>';
+            
+            try {
+                const { data, error } = await supabase.from('tournaments')
+                    .select('*, profiles(username)')
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+
+                if (!data || data.length === 0) {
+                    list.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10 bg-dark rounded-xl border border-gray-800">Henüz planlanmış turnuva bulunmuyor.</div>';
+                    return;
+                }
+
+                list.innerHTML = data.map(t => `
+                    <div class="bg-surface p-6 rounded-2xl border border-gray-800 hover:border-accent hover:-translate-y-1 transform transition duration-300 shadow-lg flex justify-between items-center group">
+                        <div>
+                            <h4 class="font-bold text-white text-xl mb-1 group-hover:text-accent transition">${t.title}</h4>
+                            <div class="flex items-center gap-4 text-xs text-gray-400 mt-2">
+                                <span class="flex items-center gap-1 bg-dark px-2 py-1 rounded"><i class="ph ph-clock text-accent"></i> ${t.time_control}</span>
+                                <span class="flex items-center gap-1"><i class="ph ph-user"></i> ${t.profiles?.username || 'Admin'}</span>
+                            </div>
+                        </div>
+                        <button onclick="showToast('Turnuva katılımı yakında eklenecek!', 'success')" class="bg-dark hover:bg-accent hover:text-black border border-gray-600 px-5 py-2.5 rounded-xl font-medium transition duration-300">Katıl</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error(err);
+                list.innerHTML = '<div class="col-span-full text-red-500 text-sm bg-dark p-4 rounded-xl border border-red-500/30">Turnuvalar yüklenirken hata oluştu. Lütfen veritabanı tablolarının oluşturulduğundan emin olun.</div>';
+            }
+        };
+
+        window.createTournament = async () => {
+            const title = document.getElementById('tour-title').value;
+            const time_control = document.getElementById('tour-time').value;
+            
+            if(!title) return showToast('Lütfen turnuva adını girin!', 'error');
+
+            showLoader(true);
+            try {
+                const { error } = await supabase.from('tournaments').insert([
+                    { title, time_control, created_by: currentUser.id }
+                ]);
+                if (error) throw error;
+                showToast('Turnuva başarıyla oluşturuldu!', 'success');
+                document.getElementById('tour-title').value = '';
+                fetchTournaments();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+            showLoader(false);
+        };
+
+        // ================= FRIENDS LOGIC =================
+        window.searchAndAddFriend = async () => {
+            const username = document.getElementById('friend-search-input').value.trim();
+            if(!username) return showToast('Bir kullanıcı adı girin.', 'error');
+            if(username === userProfile.username) return showToast('Kendinizi arkadaş olarak ekleyemezsiniz!', 'error');
+            
+            showLoader(true);
+            try {
+                // Find user
+                const { data: targetUser, error: searchErr } = await supabase.from('profiles').select('id, username').eq('username', username).single();
+                if (searchErr || !targetUser) throw new Error('Kullanıcı bulunamadı. Tam kullanıcı adını yazdığınızdan emin olun.');
+
+                // Check existing relation
+                const { data: existing } = await supabase.from('friends')
+                    .select('id')
+                    .eq('user_id', currentUser.id)
+                    .eq('friend_id', targetUser.id);
+                
+                if (existing && existing.length > 0) throw new Error('Bu kişi zaten arkadaş listenizde.');
+
+                // Add friend
+                const { error: insertErr } = await supabase.from('friends').insert([
+                    { user_id: currentUser.id, friend_id: targetUser.id }
+                ]);
+                if (insertErr) throw insertErr;
+
+                showToast(`${targetUser.username} başarıyla arkadaş olarak eklendi!`, 'success');
+                document.getElementById('friend-search-input').value = '';
+                loadFriends();
+            } catch(err) {
+                showToast(err.message, 'error');
+            }
+            showLoader(false);
+        };
+
+        window.loadFriends = async () => {
+            const list = document.getElementById('friends-list');
+            if(!list) return;
+            
+            try {
+                // Assuming relationship named fk_friend based on our custom SQL structure, 
+                // but Supabase might auto-generate a different name if not strictly matching.
+                // A safe workaround if relational mapping fails is querying manually, but let's try standard mapping.
+                
+                const { data, error } = await supabase.from('friends')
+                    .select('friend_id, profiles!fk_friend(username, name)')
+                    .eq('user_id', currentUser.id);
+
+                if (error) {
+                    // Fallback for relation name auto-generated by supabase
+                    const { data: fallbackData, error: fallbackError } = await supabase.from('friends')
+                        .select('friend_id, profiles!friends_friend_id_fkey(username, name)')
+                        .eq('user_id', currentUser.id);
+                        
+                    if(fallbackError) throw fallbackError;
+                    return renderFriendsList(fallbackData, list);
+                }
+
+                renderFriendsList(data, list);
+
+            } catch (err) {
+                console.error("Friends load err", err);
+                list.innerHTML = '<div class="col-span-full text-red-500 text-sm bg-dark p-4 rounded-xl border border-red-500/30">Arkadaş listesi yüklenemedi. SQL kısıtlamalarını (Foreign Key) doğru kurduğunuzdan emin olun.</div>';
+            }
+        };
+
+        function renderFriendsList(data, listElement) {
+            if (!data || data.length === 0) {
+                listElement.innerHTML = '<div class="col-span-full text-sm text-gray-500 bg-dark p-6 text-center rounded-xl border border-gray-800">Henüz arkadaş eklemediniz.</div>';
+                return;
+            }
+
+            listElement.innerHTML = data.map(f => {
+                const profile = f.profiles || {};
+                const uName = profile.username || 'Bilinmiyor';
+                const fName = profile.name || '';
+                const initial = uName.charAt(0).toUpperCase();
+
+                return `
+                <div class="bg-dark p-4 rounded-2xl border border-gray-700 flex items-center gap-4 hover:border-accent transition cursor-pointer group">
+                    <div class="w-12 h-12 rounded-full bg-surfaceLight flex items-center justify-center text-accent text-xl font-bold border border-gray-600 group-hover:border-accent transition">
+                        ${initial}
+                    </div>
+                    <div class="overflow-hidden">
+                        <div class="font-bold text-white truncate">${uName}</div>
+                        <div class="text-xs text-gray-400 truncate">${fName}</div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // Bootstrap App
+        document.addEventListener("DOMContentLoaded", initApp);
+    </script>
+
+    <!-- CHESS.JS & CHESSBOARD.JS LOGIC -->
+    <script>
+        var board = null;
+        var game = new Chess();
+        var $status = $('#game-status');
+
+        function onDragStart (source, piece, position, orientation) {
+            // Sadece sırası gelen rengin taşını oynat (Hotseat)
+            if (game.game_over()) return false;
+            if (game.turn() === 'w' && piece.search(/^b/) !== -1) return false;
+            if (game.turn() === 'b' && piece.search(/^w/) !== -1) return false;
+        }
+
+        function onDrop (source, target) {
+            var move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q' 
+            });
+
+            if (move === null) return 'snapback';
+            updateStatus();
+        }
+
+        function onSnapEnd () {
+            board.position(game.fen());
+        }
+
+        function updateStatus () {
+            var statusHTML = '';
+            var moveColor = game.turn() === 'w' ? 'Beyaz' : 'Siyah';
+
+            if (game.in_checkmate()) {
+                statusHTML = `<span class="text-red-500 font-bold"><i class="ph-fill ph-warning-circle"></i> Oyun bitti, ${moveColor} mat oldu.</span>`;
+            } else if (game.in_draw()) {
+                statusHTML = '<span class="text-gray-400 font-bold"><i class="ph-fill ph-handshake"></i> Oyun bitti, Beraberlik.</span>';
+            } else {
+                statusHTML = `${moveColor} hamle sırası`;
+                if (game.in_check()) statusHTML += ' <span class="text-red-500 animate-pulse font-bold">(ŞAH!)</span>';
+            }
+            $status.html(statusHTML);
+        }
+
+        window.initChessApp = function() {
+            if (board) return; 
+            var config = {
+                draggable: true,
+                position: 'start',
+                onDragStart: onDragStart,
+                onDrop: onDrop,
+                onSnapEnd: onSnapEnd,
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+            };
+            board = Chessboard('board', config);
+            updateStatus();
+            
+            // Re-render board on window resize to ensure fluid responsive layout
+            window.addEventListener('resize', () => {
+                if(document.getElementById('tab-play').classList.contains('block')) {
+                    board.resize();
+                }
+            });
+        };
+
+        window.resetGame = function() {
+            game.reset();
+            board.start();
+            updateStatus();
+            if(window.showToast) window.showToast('Tahta sıfırlandı, yeni oyuna başlandı.', 'success');
+        };
+    </script>
+</body>
+</html>
